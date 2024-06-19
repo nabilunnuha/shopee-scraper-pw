@@ -59,8 +59,8 @@ except:
 
 # ================================ MONGODB ================================
 
-def convert_product_shopee_to_pdc(product: dict, namespace: str='hoki', rnd: float=0.25390100699475204, Rnd: float=0.38799338406558054):
-    data: dict[str, dict[str, dict]] = product['data']
+def convert_product_shopee_to_pdc(product: dict, namespace: str='hoki', from_data: bool=True, rnd: float=0.25390100699475204, Rnd: float=0.38799338406558054):
+    data: dict[str, dict[str, dict]] = product['data'] if from_data else product
     public_source = {
         "productitem": {k.replace('_', ''): {ik.replace('_', ''): iv for ik, iv in v.items()} if isinstance(v, dict) else v for k, v in data['item'].items()},
         "productprice": {k.replace('_', ''): {ik.replace('_', ''): iv for ik, iv in v.items()} if isinstance(v, dict) else v for k, v in data['product_price'].items()},
@@ -100,9 +100,10 @@ def convert_product_shopee_to_pdc(product: dict, namespace: str='hoki', rnd: flo
     }
 
 def insert_one_item_to_db(cursor_item: Cursor, data: dict):
-    result = cursor_item.collection.insert_one(data)
-    # cursor_item.collection.insert_many
-    # print(result)
+    try:
+        cursor_item.collection.insert_one(data)
+    except Exception as err:
+        print(f'error duplikat: {err}')
     
 def insert_many_item_to_db(cursor_item: Cursor, data: list[dict]):
     result = cursor_item.collection.insert_many(data)
@@ -121,7 +122,34 @@ def get_cursor(path: list[str]=['kampretcode2', 'item']):
     cursor_item: Cursor = data_path[path[0]][path[1]]
     return cursor_item
 
-
+def convert_to_pdc_from_json():
+    try:
+        name_space = str(input('masukkan namespace (default: "hoki"): '))
+        if not file_json_path:
+            raise ValueError('invalid input!')
+    except:
+        name_space = 'hoki'
+        
+    try:
+        file_json_path = str(input('masukkan path file json (default: "result.json"): '))
+        if not file_json_path or not os.path.exists(file_json_path):
+            raise ValueError('invalid input!')
+    except:
+        file_json_path = 'result.json'
+    
+    if os.path.exists(file_json_path):
+        with open(file_json_path, 'r') as f:
+            data = json.load(f)
+            
+        if not isinstance(data, list):
+            raise TypeError('type is not list[dict]')
+        else:
+            cursor = get_cursor()
+            data_product_converted = [convert_product_shopee_to_pdc(product, name_space, from_data=False) for product in data]
+            for data_produck in data_product_converted:
+                insert_one_item_to_db(cursor, data_produck)
+            os.remove(file_json_path)
+            
 # ================================ GENERATE CATEGORY ================================
 
 def write_csv_file(file_path: str, data: list[dict]):
@@ -580,12 +608,11 @@ async def loop_starting(page: Page, context: BrowserContext, username: str, pass
             
         await resolve_captcha(page, sleep=0.5)
     
-async def scrape(url: str, filter_data: FilterDataModel, username: str, password: str):
+async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, username: str, password: str):
     data_product = []
     list_link_product = []
     is_nol_to_scrape = False
     is_running_scrape = False
-    cursor = get_cursor()
     
     async def capture_request(request: Request):
         nonlocal is_nol_to_scrape, data_product, list_link_product, is_running_scrape
@@ -702,6 +729,7 @@ async def scrape(url: str, filter_data: FilterDataModel, username: str, password
     
 def main_scrape():
     try:
+        cursor = get_cursor()
         exist = create_not_exist_file()
         if not exist:
             print('silakan isi datanya dulu !!!')
@@ -731,7 +759,7 @@ def main_scrape():
         for url in list_url:
             random_pick_akun = random.choice(data_akun)
             try:
-                result = asyncio.run(scrape(url, filter_data, random_pick_akun['username'], random_pick_akun['password']))
+                result = asyncio.run(scrape(cursor, url, filter_data, random_pick_akun['username'], random_pick_akun['password']))
             except:
                 traceback.print_exc()
                 continue
@@ -759,6 +787,8 @@ def main(arg: list[str]):
             elif arg[1] == 'update':
                 update = UpdateScript()
                 update.update_script()
+            elif arg[1] == 'convert_from_json_file':
+                convert_to_pdc_from_json()
             else:
                 print('invalid argv index[1]')
         else:
