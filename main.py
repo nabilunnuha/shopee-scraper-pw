@@ -1,14 +1,7 @@
-from playwright.async_api import async_playwright, Browser, BrowserContext
-from playwright.async_api._generated import Request, Page
 import asyncio, json, os, traceback, random, time, sys, csv, requests
-from rich import print
+from typing import List, Any
 from urllib.parse import urlparse, urlencode, parse_qs, ParseResult, urlunparse
 from datetime import datetime
-from pydantic import BaseModel
-from typing import List, Any
-from pymongo import MongoClient
-from pymongo.cursor import Cursor
-
 
 # ================================ UPDATE SCRIPT ================================
 
@@ -47,6 +40,22 @@ class UpdateScript:
                 file_content = self.get_content(file_url, text=True)
                 self.write_file(data['path'], file_content)
 
+try:
+    from playwright.async_api import async_playwright, Browser, BrowserContext
+    from playwright.async_api._generated import Request, Page
+    from rich import print
+    from pydantic import BaseModel
+    from pymongo import MongoClient
+    from pymongo.cursor import Cursor
+    
+except ImportError as ie:
+    print(ie)
+    time.sleep(10)
+    
+except:
+    traceback.print_exc()
+    time.sleep(10)
+    
 
 # ================================ MONGODB ================================
 
@@ -728,7 +737,7 @@ def main_scrape():
                 continue
             
             remove_complete_url(url)
-            append_data_product(result)
+            # append_data_product(result)
             print(len(result))
         
         print('selesai...')
