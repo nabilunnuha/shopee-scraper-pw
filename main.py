@@ -17,7 +17,7 @@ class UpdateScript:
         self.contents_url = 'https://api.github.com/repos/nabilunnuha/shopee-scraper-pw/contents/'
         self.base_api_url = 'https://raw.githubusercontent.com/nabilunnuha/shopee-scraper-pw/main/'
         self.session = requests.Session()
-        self.skip_name = ['README.md', 'tes.py']
+        self.skip_name = ['README.md', 'tes.py', '.gitignore', '.gitignore']
     
     def get_content(self, url: str, text=False) -> str:
         response = self.session.get(url)
