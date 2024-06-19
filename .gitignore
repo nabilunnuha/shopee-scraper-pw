@@ -1,0 +1,12 @@
+*.json
+*.txt
+*.rar
+*.zip
+*.7z
+/__pycache__
+__pycache__/
+env/
+/env
+venv/
+/venv
+tes*
