@@ -47,6 +47,7 @@ try:
     from pydantic import BaseModel
     from pymongo import MongoClient
     from pymongo.cursor import Cursor
+    from pymongo.errors import DuplicateKeyError
     
 except ImportError as ie:
     print(ie)
@@ -102,11 +103,18 @@ def convert_product_shopee_to_pdc(product: dict, namespace: str='hoki', from_dat
 def insert_one_item_to_db(cursor_item: Cursor, data: dict):
     try:
         cursor_item.collection.insert_one(data)
-    except Exception as err:
-        print(f'error duplikat: {err}')
+    except DuplicateKeyError as de:
+        print(f'duplikat: {de}')
+    except Exception as e:
+        print(f'error: {e}')
     
 def insert_many_item_to_db(cursor_item: Cursor, data: list[dict]):
-    result = cursor_item.collection.insert_many(data)
+    try:
+        result = cursor_item.collection.insert_many(data)
+    except DuplicateKeyError as de:
+        print(f'duplikat: {de}')
+    except Exception as e:
+        print(f'error: {e}')
     # print(result)
 
 def get_client():
@@ -478,8 +486,10 @@ async def filter_url_to_scrape(page: Page, url: str, page_int: int):
     return page.url
         
 async def loop_click_product(page: Page, list_link_product: list[str], current_url: str):
-    for name in list_link_product:
-        await resolve_captcha(page, 0.1)
+    for name in list(set(list_link_product)):
+        captcha = await resolve_captcha(page, sleep=0.5)
+        if captcha:
+            raise ValueError(captcha)
         try:
             try:
                 await page.wait_for_load_state('networkidle', timeout=5000)
@@ -516,7 +526,9 @@ async def loop_click_product(page: Page, list_link_product: list[str], current_u
                 await locator_product.scroll_into_view_if_needed(timeout=10000)
                 await locator_product.click(timeout=10000)
                 
-            await resolve_captcha(page, 1)
+            captcha = await resolve_captcha(page, sleep=0.5)
+            if captcha:
+                raise ValueError(captcha)
             await page.go_back()
             
         except Exception as e:
@@ -525,27 +537,59 @@ async def loop_click_product(page: Page, list_link_product: list[str], current_u
 
 async def resolve_captcha(page: Page, sleep: int | float = 2):
     await asyncio.sleep(sleep)
+    laporkan = page.locator('button.cHPMhq', has_text='Laporkan Permasalahan')
+    masalah = page.locator('div.uUcrOy', has_text='kami mendeteksi masalah dari koneksi jaringanmu')
+    terjadi = page.locator('div.D4kY48', has_text='terjadi kesalahan saat memuat halaman')
+    cobalagi = page.locator('button.hKaCPY', has_text='Coba Lagi')
     start = time.time()
     while True:
         if (time.time() - start) > 600:
+            return 'resolve_captcha traffic error captcha'
             raise ValueError('resolve_captcha tidak ada pergerakan')
         
-        if 'verify/traffic/error' in page.url:
-            print('error traffic captcha')
-            raise ValueError('resolve_captcha traffic error captcha')
-        
-        if 'verify/captcha' in page.url:
+        if '/verify/' in page.url:
             print('captcha')
-            await asyncio.sleep(2)
+            await asyncio.sleep(1)
         else:
             break
         
-async def browser_context() -> BrowserContext:
-    async with async_playwright() as p:
-        browser: Browser = await p.firefox.launch(headless=False)
-        context: BrowserContext = await browser.new_context()
-        return context
-
+        if '/verify/traffic/error' in page.url:
+            print('error traffic captcha')
+            return 'resolve_captcha traffic error captcha'
+            raise ValueError('resolve_captcha traffic error captcha')
+        
+        try:
+            await laporkan.scroll_into_view_if_needed(timeout=300)
+            print('error traffic captcha: Laporkan Permasalahan')
+            return 'resolve_captcha traffic error captcha'
+            raise ValueError('resolve_captcha traffic error captcha')
+        except:
+            pass
+        
+        try:
+            await terjadi.scroll_into_view_if_needed(timeout=300)
+            print('error traffic captcha: Laporkan Permasalahan')
+            return 'resolve_captcha traffic error captcha'
+            raise ValueError('resolve_captcha traffic error captcha')
+        except:
+            pass
+        
+        try:
+            await masalah.scroll_into_view_if_needed(timeout=300)
+            print('Maaf, kami mendeteksi masalah dari koneksi jaringanmu.')
+            return 'resolve_captcha traffic error captcha'
+            raise ValueError('resolve_captcha traffic error captcha')
+        except:
+            pass
+        
+        try:
+            await cobalagi.scroll_into_view_if_needed(timeout=300)
+            print('Maaf, kami mendeteksi masalah dari koneksi jaringanmu.')
+            return 'resolve_captcha traffic error captcha'
+            raise ValueError('resolve_captcha traffic error captcha')
+        except:
+            pass
+        
 async def login_account(page: Page, username: str, password: str):
     input_login_username = page.locator('input[type=text].Z7tNyT')
     input_login_password = page.locator('input[type=password].Z7tNyT')
@@ -606,7 +650,9 @@ async def loop_starting(page: Page, context: BrowserContext, username: str, pass
         except:
             pass
             
-        await resolve_captcha(page, sleep=0.5)
+        captcha = await resolve_captcha(page, sleep=0.5)
+        if captcha:
+            raise ValueError(captcha)
     
 async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, username: str, password: str):
     data_product = []
@@ -678,11 +724,15 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                     break
                 
                 try:
-                    await resolve_captcha(page, sleep=1)
+                    captcha = await resolve_captcha(page, sleep=0.5)
+                    if captcha:
+                        raise ValueError(captcha)
                     print('get url to scrape')
                     is_running_scrape = False
                     current_url = await filter_url_to_scrape(page, url, page_int)
-                    await resolve_captcha(page, sleep=1)
+                    captcha = await resolve_captcha(page, sleep=0.5)
+                    if captcha:
+                        raise ValueError(captcha)
                     
                     print(f'get product to scrape: page {page_int}')
                     start_while = time.time()
@@ -710,7 +760,9 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                         if 'verify/traffic/error' in page.url:
                             raise ValueError('error: verify/traffic/error')
                         
-                        await resolve_captcha(page, sleep=0.5)
+                        captcha = await resolve_captcha(page, sleep=0.5)
+                        if captcha:
+                            raise ValueError(captcha)
                         
                     await loop_click_product(page, list_link_product, current_url)
                     
@@ -729,7 +781,11 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
     
 def main_scrape():
     try:
-        cursor = get_cursor()
+        try:
+            cursor = get_cursor()
+        except:
+            raise Exception('error: Mongodb disconnect!!!')
+        
         exist = create_not_exist_file()
         if not exist:
             print('silakan isi datanya dulu !!!')
