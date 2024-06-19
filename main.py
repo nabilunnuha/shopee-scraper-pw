@@ -593,37 +593,23 @@ async def resolve_captcha(page: Page, sleep: int | float = 2):
 async def login_account(page: Page, username: str, password: str):
     input_login_username = page.locator('input[type=text].Z7tNyT')
     input_login_password = page.locator('input[type=password].Z7tNyT')
-    
-    async def input_login_form():
-        await input_login_username.scroll_into_view_if_needed(timeout=500)
-        print('akun belum login: isi form login!')
-        await input_login_username.click()
-        await input_login_username.clear()
-        await asyncio.sleep(0.5)
-        await page.keyboard.type(username)
-        await input_login_password.scroll_into_view_if_needed()
-        await input_login_password.click()
-        await input_login_password.clear()
-        await asyncio.sleep(0.5)
-        await page.keyboard.type(password)
-        await asyncio.sleep(0.5)
-        await page.keyboard.press('Enter')
+    if 'shopee.co.id/buyer/login' not in page.url:
+        await page.goto('https://shopee.co.id/buyer/login?next=https%3A%2F%2Fshopee.co.id%2F')
         
-    try:
-        if 'shopee.co.id/buyer/login' not in page.url:
-            await page.goto('https://shopee.co.id/buyer/login?next=https%3A%2F%2Fshopee.co.id%2F')
-            
-        while True:
-            try:
-                await input_login_username.scroll_into_view_if_needed(timeout=500)
-                await input_login_form()
-            except:
-                break
-            
-        return True
-    
-    except:
-        return False
+    await input_login_username.scroll_into_view_if_needed(timeout=500)
+    print('akun belum login: isi form login!')
+    await input_login_username.click()
+    await input_login_username.clear()
+    await asyncio.sleep(0.5)
+    await page.keyboard.type(username)
+    await input_login_password.scroll_into_view_if_needed()
+    await input_login_password.click()
+    await input_login_password.clear()
+    await asyncio.sleep(0.5)
+    await page.keyboard.type(password)
+    await asyncio.sleep(0.5)
+    await page.keyboard.press('Enter')
+    await asyncio.sleep(2)
 
 async def loop_starting(page: Page, context: BrowserContext, username: str, password: str):
     account_container = page.locator('div.navbar__link--account__container')
