@@ -60,15 +60,75 @@ except:
 
 # ================================ MONGODB ================================
 
+def delete_under_score_from_key(data: dict[str, Any] | list[dict[str, Any]]) -> dict[str, Any] | list[dict[str, Any]]:
+    def process_dict(d: dict[str, Any]) -> dict[str, Any]:
+        return {k.replace('_', ''): process_value(v) for k, v in d.items()}
+
+    def process_list(lst: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        return [process_dict(item) if isinstance(item, dict) else item for item in lst]
+
+    def process_value(value: Any) -> Any:
+        if isinstance(value, dict):
+            return process_dict(value)
+        elif isinstance(value, list):
+            return process_list(value)
+        else:
+            return value
+
+    if isinstance(data, dict):
+        return process_dict(data)
+    elif isinstance(data, list):
+        return process_list(data)
+    else:
+        return data
+
 def convert_product_shopee_to_pdc(product: dict, namespace: str='hoki', from_data: bool=True, rnd: float=0.25390100699475204, Rnd: float=0.38799338406558054):
     data: dict[str, dict[str, dict]] = product['data'] if from_data else product
     public_source = {
-        "productitem": {k.replace('_', ''): {ik.replace('_', ''): iv for ik, iv in v.items()} if isinstance(v, dict) else v for k, v in data['item'].items()},
-        "productprice": {k.replace('_', ''): {ik.replace('_', ''): iv for ik, iv in v.items()} if isinstance(v, dict) else v for k, v in data['product_price'].items()},
-        "productreview": {k.replace('_', ''): {ik.replace('_', ''): iv for ik, iv in v.items()} if isinstance(v, dict) else v for k, v in data['product_review'].items()},
-        "productimages": {k.replace('_', ''): {ik.replace('_', ''): iv for ik, iv in v.items()} if isinstance(v, dict) else v for k, v in data['product_images'].items()},
-        "productshop": {k.replace('_', ''): {ik.replace('_', ''): iv for ik, iv in v.items()} if isinstance(v, dict) else v for k, v in data['shop_detailed'].items()},
+        "productitem": delete_under_score_from_key(data['item']),
+        "productprice": delete_under_score_from_key(data['product_price']),
+        "productreview": delete_under_score_from_key(data['product_review']),
+        "productimages": delete_under_score_from_key(data['product_images']),
+        "productshop": delete_under_score_from_key(data['shop_detailed']),
+        'productinfo': {
+            'agegate': delete_under_score_from_key(data['age_gate']),
+            'coininfo': delete_under_score_from_key(data['coin_info']),
+            'flashsale': delete_under_score_from_key(data['flash_sale']),
+            'shopvouchers': delete_under_score_from_key(data['shop_vouchers'])},
+        'itemid': data['item']['item_id'],
+        "name": data['item']['title'],
+        "sold": 0,
+        "imageurl": data['item']['image'],
+        "imageurls": data['product_images']['images'],
+        "userid": data['shop_detailed']['userid'],
+        "catid": [catid['catid'] for catid in data['item']['categories']][0],
+        'bundledealid': 0,
+        'canusebundledeal': False,
+        'clipinfo': None,
+        'codflag': 0,
+        'coinearnlabel': None,
+        'creditinsurancedata': {'insuranceproducts': None},
+        'exclusivepriceinfo': None,
+        'groupbuyinfo': None,
+        'haslowestpriceguarantee': False,
+        'isccinstallmentpaymenteligible': False,
+        'isgroupbuyitem': None,
+        'isnonccinstallmentpaymenteligible': False,
+        'itemhaspost': False,
+        'itemhassizerecommendation': False,
+        'makeups': None,
+        'presaleinfo': None,
+        'shopeeverified': False,
+        'showfreereturn': None,
+        'showfreeshipping': False,
+        'taxcode': None,
+        'upcomingflashsale': None,
+        'videoinfolist': [],
+        'welcomepackageinfo': None,
+        'wpeligibility': None,
+        'ispc': True
     }
+    
     return {
         'processed': False,
         'marketplace': 'shopee',
@@ -77,9 +137,12 @@ def convert_product_shopee_to_pdc(product: dict, namespace: str='hoki', from_dat
         "name": data['item']['title'],
         'namespace': namespace,
         "rnd": rnd,
-        "price": data['item']['price'] / 100000,
-        "price_before_discount": data['item']['price'] / 100000,
-        "price_after_discount": data['item']['price'] / 100000,
+        "image": data['item']['image'],
+        "images": data['product_images']['images'],
+        "sold": sum([model['sold'] for model in data['item']['models']]),
+        "price": int(data['item']['price'] / 100000),
+        "price_before_discount": int(data['item']['price'] / 100000),
+        "price_after_discount": int(data['item']['price'] / 100000),
         "shop": {
             "shopid": data['item']['shop_id'],
             "location": data['item']['shop_location']
@@ -103,19 +166,24 @@ def convert_product_shopee_to_pdc(product: dict, namespace: str='hoki', from_dat
 def insert_one_item_to_db(cursor_item: Cursor, data: dict):
     try:
         cursor_item.collection.insert_one(data)
+        return True
     except DuplicateKeyError as de:
         print(f'duplikat: {de}')
+        return False
     except Exception as e:
         print(f'error: {e}')
+        return False
     
 def insert_many_item_to_db(cursor_item: Cursor, data: list[dict]):
     try:
         result = cursor_item.collection.insert_many(data)
+        return True
     except DuplicateKeyError as de:
         print(f'duplikat: {de}')
+        return False
     except Exception as e:
         print(f'error: {e}')
-    # print(result)
+        return False
 
 def get_client():
     return MongoClient('localhost', 27017)
@@ -654,10 +722,11 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
             data = res_json.get('data', None)
             if data:
                 converted_data = convert_product_shopee_to_pdc(res_json, namespace=filter_data.name_space)
-                insert_one_item_to_db(cursor, converted_data)
-                data_product.append(data)
-                title: str = data['item']['title']
-                print(f'scraped: {title[:70]}')
+                status_product_db = insert_one_item_to_db(cursor, converted_data)
+                if status_product_db:
+                    data_product.append(data)
+                    title: str = data['item']['title']
+                    print(f'scraped: {title[:70]}')
             else:
                 print(f'error scrape | response: {res_json}')
                 
