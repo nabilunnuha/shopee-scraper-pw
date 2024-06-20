@@ -518,7 +518,7 @@ def filter_product_duplikat(list_produk: list[dict]):
 
 def remove_complete_url(url_complete: str):
     with open('./list_url_or_keyword.txt', 'r') as f:
-        data_cat = [url.strip() for url in f.readlines() if url.strip() and url_complete not in url]
+        data_cat = [url.strip() for url in f.readlines() if url.strip() and url_complete.strip() != url.strip()]
         
     with open('./list_url_or_keyword.txt', 'w') as f:
         f.write('\n'.join(data_cat))
@@ -876,6 +876,7 @@ def main_scrape():
                 result = asyncio.run(scrape(cursor, url, filter_data, random_pick_akun['username'], random_pick_akun['password']))
             except:
                 traceback.print_exc()
+                result = []
             
             remove_complete_url(url)
             # append_data_product(result)
