@@ -412,7 +412,7 @@ def phare_url_params(url: str, params: dict[str, str]):
 
     return urlunparse(new_url_parts)
 
-def corvert_cookie(driver_cookies: list[dict[str, Any]], user_agent: str='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'):
+def corvert_cookie(driver_cookies: list[dict[str, Any]], user_agent: str='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'):
     def cookies_capitalize_first(dictionary: dict[str, Any]):
         new_dict = {}
         for key, value in dictionary.items():
@@ -527,6 +527,11 @@ def remove_complete_url(url_complete: str):
 # ================================ SCRAPE ================================
 
 async def filter_url_to_scrape(page: Page, url: str, page_int: int):
+    try:
+        await page.wait_for_load_state('load', timeout=10000)
+    except:
+        pass
+    
     if 'https://shopee.co.id/' in url:
         if page_int > 0:
             url = phare_url_params(url, params={'page': page_int})
@@ -561,14 +566,14 @@ async def filter_url_to_scrape(page: Page, url: str, page_int: int):
     return page.url
         
 async def loop_click_product(page: Page, list_link_product: list[str], current_url: str):
+    # nav_pagination_bottom = page.locator('nav.shopee-page-controller')
     for name in list(set(list_link_product)):
         captcha = await resolve_captcha(page, sleep=0.5)
         if captcha:
             raise ValueError(captcha)
         try:
             try:
-                await page.wait_for_load_state('networkidle', timeout=5000)
-                await page.wait_for_load_state('domcontentloaded', timeout=5000)
+                await page.wait_for_load_state('domcontentloaded', timeout=10000)
             except:
                 pass
             
@@ -578,18 +583,16 @@ async def loop_click_product(page: Page, list_link_product: list[str], current_u
                 await locator_product.scroll_into_view_if_needed(timeout=2000)
                 await locator_product.click(timeout=2000)
             except:
-                
                 if current_url[:50] not in page.url:
                     await page.go_back()
                     
                 prev = 0
-                for iter in range(0, 7000, 500):
+                for iter in range(0, 5000, 500):
                     await page.evaluate(f'() => window.scrollTo({prev}, {iter})')
                     prev = iter
                     try:
                         try:
-                            await page.wait_for_load_state('networkidle', timeout=1000)
-                            await page.wait_for_load_state('domcontentloaded', timeout=1000)
+                            await page.wait_for_load_state('domcontentloaded', timeout=5000)
                         except:
                             pass
                         
@@ -598,10 +601,10 @@ async def loop_click_product(page: Page, list_link_product: list[str], current_u
                     except:
                         pass
                         
-                await locator_product.scroll_into_view_if_needed(timeout=10000)
-                await locator_product.click(timeout=10000)
+                await locator_product.scroll_into_view_if_needed(timeout=5000)
+                await locator_product.click()
                 
-            captcha = await resolve_captcha(page, sleep=0.5)
+            captcha = await resolve_captcha(page, sleep=1)
             if captcha:
                 raise ValueError(captcha)
             await page.go_back()
@@ -690,11 +693,20 @@ async def loop_starting(page: Page, context: BrowserContext, username: str, pass
     account_container = page.locator('div.navbar__link--account__container')
     input_login_username = page.locator('input[type=text].Z7tNyT')
     try:
-        await page.wait_for_load_state('domcontentloaded', timeout=5000)
-        await page.wait_for_load_state('networkidle', timeout=5000)
+        print('waiting for load state')
+        await page.wait_for_load_state('load', timeout=10000)
     except:
-        print('error timeout: domcontentloaded or networkidle in 10s')
-        await page.reload()
+        pass
+    try:
+        print('waiting for networkidle state')
+        await page.wait_for_load_state('networkidle', timeout=10000)
+    except:
+        pass
+    try:
+        print('waiting for domcontentloaded state')
+        await page.wait_for_load_state('domcontentloaded', timeout=10000)
+    except:
+        pass
         
     while True:
         try:
@@ -773,7 +785,6 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
             print(e)
 
         await page.goto('https://shopee.co.id/buyer/login?next=https%3A%2F%2Fshopee.co.id%2F', referer='https://www.google.com/search?q=shopee')
-
         await loop_starting(page, context, username, password) 
         
         empty_result = page.locator('div.shopee-search-empty-result-section')
@@ -811,7 +822,7 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                         raise ValueError('error: tidak ada produk untuk di scrape!')
                     
                     try:
-                        await empty_result.scroll_into_view_if_needed(timeout=1000)
+                        await empty_result.check(timeout=1000)
                         print('error url invalid')
                         is_error_url = True
                         break
