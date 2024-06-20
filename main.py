@@ -39,6 +39,8 @@ class UpdateScript:
                 file_url = data['download_url']
                 file_content = self.get_content(file_url, text=True)
                 self.write_file(data['path'], file_content)
+        
+        print('script updated...')
 
 try:
     from playwright.async_api import async_playwright, Browser, BrowserContext
@@ -896,8 +898,12 @@ def main(arg: list[str]):
             if arg[1] == 'generate_category':
                 generate_category()
             elif arg[1] == 'update':
-                update = UpdateScript()
-                update.update_script()
+                try:
+                    update = UpdateScript()
+                    update.update_script()
+                except Exception as e:
+                    print(f'error: {e}\nUnduh script "main.py" manual disini "https://raw.githubusercontent.com/nabilunnuha/shopee-scraper-pw/main/main.py"')
+                    
             elif arg[1] == 'convert_from_json_file':
                 convert_to_pdc_from_json()
             else:
@@ -912,4 +918,3 @@ def main(arg: list[str]):
 if __name__ == '__main__':
     arg = sys.argv
     main(arg)
-        
