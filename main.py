@@ -689,10 +689,11 @@ async def loop_starting(page: Page, context: BrowserContext, username: str, pass
         await page.wait_for_load_state('networkidle', timeout=5000)
     except:
         print('error timeout: domcontentloaded or networkidle in 10s')
+        await page.reload()
         
     while True:
         try:
-            await account_container.scroll_into_view_if_needed(timeout=500)
+            await account_container.scroll_into_view_if_needed(timeout=1000)
             cookies = await context.cookies()
             save_cookie(username, cookies)
             break
@@ -767,7 +768,7 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
             except Exception as e:
                 print(e)
 
-            await page.goto('https://shopee.co.id/', referer='https://www.google.com/search?q=shopee')
+            await page.goto('https://shopee.co.id/buyer/login?next=https%3A%2F%2Fshopee.co.id%2F', referer='https://www.google.com/search?q=shopee')
 
             await loop_starting(page, context, username, password) 
             
