@@ -330,7 +330,7 @@ class CollectionManager:
         self.all_name_space = self.get_all_name_space()
         while True:
             try:
-                items = ['get all count collection', 'export collection', 'import collection from file', 'exit']
+                items = ['get all count collection', 'export collection', 'import collection from file', 'delete collection by namespace', 'exit']
                 for no, select in enumerate(items, start=1):
                     print(f'{no}. {select.capitalize()}')
                 
@@ -379,6 +379,11 @@ class CollectionManager:
                     print(f'success import: {result} product')
                 
                 elif selected_user == 4:
+                    name_space = str(input('masukkan nama collection yang ingin di hapus: '))
+                    count_deleted = self.delete_col_by_name_space(name_space)
+                    print(f'deleted: {count_deleted} product')
+                
+                elif selected_user == 5:
                     break
                 
                 print('\n')
