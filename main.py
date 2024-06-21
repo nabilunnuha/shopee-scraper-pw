@@ -1,7 +1,8 @@
 import asyncio, json, os, traceback, random, time, sys, csv, requests
-from typing import List, Any
+from typing import List, Any, Literal
 from urllib.parse import urlparse, urlencode, parse_qs, ParseResult, urlunparse
 from datetime import datetime
+from collections import Counter
 
 # ================================ UPDATE SCRIPT ================================
 
@@ -233,6 +234,160 @@ def convert_to_pdc_from_json():
                 insert_one_item_to_db(cursor, data_produck)
             os.remove(file_json_path)
             
+
+# ================================ COLLECTION MANAGER ================================
+
+class CollectionManager:
+    def __init__(self) -> None:
+        self.all_name_space = {}
+        
+    def get_all_name_space(self):
+        return dict(Counter([name['namespace'] for name in get_cursor() if 'namespace' in name]))
+    
+    def delete_col_by_name_space(self, name_space: str) -> int:
+        if name_space in list(self.all_name_space.keys()):
+            rslt_delete = get_cursor().collection.delete_many({'namespace': name_space})
+            return rslt_delete.deleted_count
+        
+        print(f'"{name_space}" not found')
+        return 0
+    
+    def filter_collection(self) -> list[dict]:
+        list_data = []
+        for col in get_cursor():
+            del col['_id']
+            col['processed'] = False
+            list_data.append(col)
+            
+        return list_data
+    
+    def save_to_json_file(self, data: Any,  path: str):
+        with open(path, 'w') as f:
+            json.dump(data, f)
+    
+    def export_collection(self, name_space: str, path_export: str):
+        collection = self.filter_collection()
+        if name_space == 'ALL':
+            self.save_to_json_file(collection, path_export)
+            return True
+        elif name_space in list(self.all_name_space.keys()):
+            data = [col for col in collection if col['namespace'] == name_space.strip()]
+            self.save_to_json_file(data, path_export)
+            return True
+        
+        print(f'"{name_space}" not found')
+        return False
+        
+    def import_collection_from_file(self, mode: Literal['pdc', 'pdp'], path_file: str, name_space: str | None):
+        if os.path.exists(path_file):
+            with open(path_file, 'r') as f:
+                data: list[dict] = json.load(f)
+                
+            cursor = get_cursor()
+            names_space_date_or_input = f'collection_{datetime.now().strftime("%d_%m_%Y")}' if not name_space else name_space
+            if isinstance(data, list):
+                if mode == 'pdc':
+                    issuccess = 0
+                    for col in data:
+                        if '_id' in col:
+                            del col['_id']
+                            
+                        col['namespace'] = names_space_date_or_input
+                            
+                        rslt = insert_one_item_to_db(cursor, col)
+                        if rslt:
+                            issuccess += 1
+                            
+                    return issuccess
+                
+                elif mode == 'pdp':
+                    issuccess = 0
+                    for col in data:
+                        if '_id' in col:
+                            del col['_id']
+                            
+                        col['namespace'] = names_space_date_or_input
+                            
+                        product = convert_product_shopee_to_pdc(col, namespace=names_space_date_or_input, from_data=True if 'data' in col else False)
+                        rslt = insert_one_item_to_db(cursor, product)
+                        if rslt:
+                            issuccess += 1
+                        
+                    return issuccess
+
+                else:
+                    raise ValueError(f'invalid mode: {mode}')
+                
+            else:
+                print(f'file harus format Array / List "[]"')
+                
+        else:
+            print(f'"{path_file}" file not found')
+            
+        return 0
+        
+    def main_usage(self):
+        self.all_name_space = self.get_all_name_space()
+        while True:
+            try:
+                items = ['get all count collection', 'export collection', 'import collection from file', 'exit']
+                for no, select in enumerate(items, start=1):
+                    print(f'{no}. {select.capitalize()}')
+                
+                selected_user = int(input('\npilih nomor: '))
+                if selected_user == 1:
+                    self.all_name_space = self.get_all_name_space()
+                    print(self.all_name_space)
+                    
+                elif selected_user == 2:
+                    try:
+                        name_space = str(input('masukkan nama collection (default: "ALL" untuk semua collection): '))
+                        if not name_space:
+                            raise ValueError('name_space')
+                    except:
+                        name_space = 'ALL'
+                    try:
+                        path_export = str(input('masukkan path export (default: "result_product.json"): '))
+                        if not path_export:
+                            raise ValueError('path_export')
+                    except:
+                        path_export = 'result_product.json'
+                        
+                    result = self.export_collection(name_space, path_export)
+                    print(f'success export: {result}')
+                
+                elif selected_user == 3:
+                    path_file = str(input('masukkan path file: (ex: "result_product.json"): '))
+                    
+                    try:
+                        type_data = int(input('produk dari [ 1.pdc_collection | 2.original_from_shopee ] (default: 1): '))
+                        if type_data == 2:
+                            mode = 'pdp'
+                        else:
+                            mode = 'pdc'
+                    except:
+                        mode = 'pdc'
+                    
+                    try:
+                        name_space = str(input('masukkan nama collection ( optional ): '))
+                        if not name_space:
+                            raise ValueError('name_space')
+                    except:
+                        name_space = None
+                        
+                    result = self.import_collection_from_file(mode, path_file, name_space)
+                    print(f'success import: {result} product')
+                
+                elif selected_user == 4:
+                    break
+                
+                print('\n')
+                
+            except:
+                traceback.print_exc()
+                print('\n')
+        
+        
 # ================================ GENERATE CATEGORY ================================
 
 def write_csv_file(file_path: str, data: list[dict]):
@@ -918,8 +1073,14 @@ def main(arg: list[str]):
                     
             elif arg[1] == 'convert_from_json_file':
                 convert_to_pdc_from_json()
+                
+            elif arg[1] == 'collection_manager':
+                collection_manager = CollectionManager()
+                collection_manager.main_usage()
+                
             else:
                 print('invalid argv index[1]')
+                
         else:
             print('invalid argv')
     except:
