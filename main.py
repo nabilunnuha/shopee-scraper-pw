@@ -1047,7 +1047,7 @@ def main_scrape():
                 result = asyncio.run(scrape(cursor, url, filter_data, random_pick_akun['username'], random_pick_akun['password']))
             except:
                 traceback.print_exc()
-                result = []
+                continue
             
             remove_complete_url(url)
             # append_data_product(result)
