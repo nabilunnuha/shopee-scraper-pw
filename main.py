@@ -1,8 +1,9 @@
-import asyncio, json, os, traceback, random, time, sys, csv, requests
-from typing import List, Any, Literal
+import asyncio, json, os, traceback, random, time, sys, csv, requests, math
+from typing import List, Any, Literal, Dict
 from urllib.parse import urlparse, urlencode, parse_qs, ParseResult, urlunparse
 from datetime import datetime
-from collections import Counter
+from collections import Counter, defaultdict
+
 
 # ================================ UPDATE SCRIPT ================================
 
@@ -51,6 +52,7 @@ try:
     from pymongo import MongoClient
     from pymongo.cursor import Cursor
     from pymongo.errors import DuplicateKeyError
+    from tqdm import tqdm
     
 except ImportError as ie:
     print(ie)
@@ -235,6 +237,223 @@ def convert_to_pdc_from_json():
             os.remove(file_json_path)
             
 
+# ================================ CONVERT COLLECTION TO QLOBOT ================================
+def fix_url(url: str) -> str:
+    if url and 'https://cf.shopee.co.id' not in url:
+        url = f'https://cf.shopee.co.id/file/{url}'
+        
+    return url
+
+def filter_duplicates_list_dict(list_dicts: list[dict], key='url') -> list[dict]:
+    seen_urls = set()
+    filtered_list = [d for d in list_dicts if not (d[key] in seen_urls or seen_urls.add(d[key]))]
+    return filtered_list
+
+def filter_collection_from_pdc(data_list: list[dict]) -> tuple[list,list]:
+    data_produk = []
+    data_produk_variant = []
+    for data in tqdm(data_list, desc='Filter Product', ncols=100):
+        try:
+            to_items = data
+            images = data
+            public_source = to_items['public_source'] if 'public_source' in to_items else to_items['publicsource']
+            productitem = public_source['productitem']
+            url = data['url']
+            name: str = to_items['name']
+            price = to_items['price']
+            thumbnail_1 = to_items['image']
+            thumbnail_2 = fix_url(images['images'][1]) if len(images['images']) >= 2 else ""
+            thumbnail_3 = fix_url(images['images'][2]) if len(images['images']) >= 3 else ""
+            thumbnail_4 = fix_url(images['images'][3]) if len(images['images']) >= 4 else ""
+            thumbnail_5 = fix_url(images['images'][4]) if len(images['images']) >= 5 else ""
+            thumbnail_6 = fix_url(images['images'][5]) if len(images['images']) >= 6 else ""
+            thumbnail_7 = fix_url(images['images'][6]) if len(images['images']) >= 7 else ""
+            thumbnail_8 = fix_url(images['images'][7]) if len(images['images']) >= 8 else ""
+            thumbnail_9 = fix_url(images['images'][8]) if len(images['images']) >= 9 else ""
+            thumbnail_10 = fix_url(images['images'][9]) if len(images['images']) >= 10 else ""
+            video = ''
+            description: str = to_items['desc']
+            description_html = ''
+            weight = 0
+            if 'condition' in productitem:
+                condition = 'Baru' if productitem['condition'] == 1 else 'Bekas'
+            else:
+                condition = 'Baru'
+            min_order = 1
+            category_1 = productitem['categories'][0]['displayname'] if len(productitem['categories']) >= 1 else ""
+            category_2 = productitem['categories'][1]['displayname'] if len(productitem['categories']) >= 2 else ""
+            category_3 = productitem['categories'][2]['displayname'] if len(productitem['categories']) >= 3 else ""
+            category_4 = productitem['categories'][3]['displayname'] if len(productitem['categories']) >= 4 else ""
+            category_5 = productitem['categories'][4]['displayname'] if len(productitem['categories']) >= 5 else ""
+            sold = to_items['sold']
+            views = 0
+            rating = public_source['productreview'].get('ratingstar', 0)
+            if public_source['productreview'].get('ratingcount', 0):
+                rating_by = sum(public_source['productreview']['ratingcount'])
+            else:
+                rating_by = 0
+                
+            stock = to_items['stock']
+            size_image = ''
+            description = description.strip()
+            
+            new_data = {'url': url,
+                        'name': name,
+                        'price': price,
+                        'thumbnail_1': fix_url(thumbnail_1),
+                        'thumbnail_2': fix_url(thumbnail_2),
+                        'thumbnail_3': fix_url(thumbnail_3),
+                        'thumbnail_4': fix_url(thumbnail_4),
+                        'thumbnail_5': fix_url(thumbnail_5),
+                        'thumbnail_6': fix_url(thumbnail_6),
+                        'thumbnail_7': fix_url(thumbnail_7),
+                        'thumbnail_8': fix_url(thumbnail_8),
+                        'thumbnail_9': fix_url(thumbnail_9),
+                        'thumbnail_10': fix_url(thumbnail_10),
+                        'video': video,
+                        'description': description,
+                        'description_html': description_html,
+                        'weight': weight,
+                        'condition': condition,
+                        'min_order': min_order,
+                        'category_1': category_1,
+                        'category_2': category_2,
+                        'category_3': category_3,
+                        'category_4': category_4,
+                        'category_5': category_5,
+                        'sold': sold,
+                        'views': views,
+                        'rating': rating,
+                        'rating_by': rating_by,
+                        'stock': stock,
+                        'size_image': size_image}
+            
+            models = productitem['models']
+            tier_variations = productitem['tiervariations'] if 'tiervariations' in productitem else productitem['tier_variations']
+            for model in models:
+                if len(tier_variations) >= 1:
+                    v_stock = model['stock']
+                    v_price = math.ceil(int(str(model['price'])[:-5]) / 100) * 100
+                    tier_index = model['extinfo']['tierindex']
+                    v_image = ''
+                    v2_name = ''
+                    v2_value = ''
+                    if len(tier_variations) >= 2:
+                        v1_name = tier_variations[0]['name']
+                        v2_name = tier_variations[1]['name'] if len(tier_variations) >= 2 else ""
+                        if tier_variations[0]['images']:
+                            v_image = fix_url(tier_variations[0]['images'][tier_index[0]])
+                        if len(tier_variations[0]['options']) >= 1:
+                            v1_value = tier_variations[0]['options'][tier_index[0]]
+                        if v2_name and len(tier_variations[1]['options']) >= 1:
+                            v2_value = tier_variations[1]['options'][tier_index[1]]
+                    elif len(tier_variations) < 2:
+                        v1_name = tier_variations[0]['name']
+                        if tier_variations[0]['images']:
+                            v_image = fix_url(tier_variations[0]['images'][tier_index[0]])
+                        if len(tier_variations[0]['options']) >= 1:
+                            v1_value = tier_variations[0]['options'][tier_index[0]]
+                            
+                v_new_data = {
+                    'url': url,
+                    'v_stock': v_stock,
+                    'v_price': v_price,
+                    'v_image': v_image,
+                    'v1_name': v1_name,
+                    'v1_value': v1_value,
+                    'v2_name': v2_name,
+                    'v2_value': v2_value,
+                }
+                data_produk_variant.append(v_new_data)
+                
+            data_produk.append(new_data)
+            
+        except Exception as e:
+            # traceback.print_exc()
+            # print(e)
+            pass
+              
+    return data_produk, data_produk_variant
+
+def merge_product_variant(products: List[Dict], variants: List[Dict]) -> List[Dict]:
+    url_to_variants = defaultdict(list)
+    
+    for variant in variants:
+        url_to_variants[variant['url']].append(variant)
+    
+    result_merge = []
+    
+    for product in tqdm(products, desc='Combining Variations', ncols=100):
+        url = product['url']
+        
+        if url in url_to_variants:
+            data_variants = url_to_variants[url]
+            variant_count = min(len(data_variants), 100) 
+            
+            product['v_name1'] = data_variants[0]['v1_name'] if variant_count >= 1 else ''
+            product['v_name2'] = data_variants[0]['v2_name'] if variant_count >= 1 else ''
+            
+            for i in range(1, variant_count + 1):
+                index = i - 1
+                product[f'v{i}_value1'] = data_variants[index]['v1_value']
+                product[f'v{i}_value2'] = data_variants[index]['v2_value']
+                product[f'v{i}_price'] = data_variants[index]['v_price']
+                product[f'v{i}_stock'] = data_variants[index]['v_stock']
+                product[f'v{i}_image'] = data_variants[index]['v_image']
+        
+        result_merge.append(product)
+    
+    return result_merge
+
+def write_csv_file_qlobot(file_path: str, data: list[dict[str, Any]]):
+    header_exists = os.path.exists(file_path) and os.stat(file_path).st_size > 0
+
+    with open(file_path, 'w', newline='', encoding='utf-8') as csv_file:
+        fieldnames = ['url','name','price','thumbnail_1','thumbnail_2','thumbnail_3','thumbnail_4','thumbnail_5','thumbnail_6','thumbnail_7','thumbnail_8','thumbnail_9','thumbnail_10','video','description','description_html','weight','condition','min_order','category_1','category_2','category_3','category_4','category_5','sold','views','rating','rating_by','stock','size_image','v_name1','v_name2','v1_value1','v1_value2','v1_price','v1_stock','v1_image','v2_value1','v2_value2','v2_price','v2_stock','v2_image','v3_value1','v3_value2','v3_price','v3_stock','v3_image','v4_value1','v4_value2','v4_price','v4_stock','v4_image','v5_value1','v5_value2','v5_price','v5_stock','v5_image','v6_value1','v6_value2','v6_price','v6_stock','v6_image','v7_value1','v7_value2','v7_price','v7_stock','v7_image','v8_value1','v8_value2','v8_price','v8_stock','v8_image','v9_value1','v9_value2','v9_price','v9_stock','v9_image','v10_value1','v10_value2','v10_price','v10_stock','v10_image','v11_value1','v11_value2','v11_price','v11_stock','v11_image','v12_value1','v12_value2','v12_price','v12_stock','v12_image','v13_value1','v13_value2','v13_price','v13_stock','v13_image','v14_value1','v14_value2','v14_price','v14_stock','v14_image','v15_value1','v15_value2','v15_price','v15_stock','v15_image','v16_value1','v16_value2','v16_price','v16_stock','v16_image','v17_value1','v17_value2','v17_price','v17_stock','v17_image','v18_value1','v18_value2','v18_price','v18_stock','v18_image','v19_value1','v19_value2','v19_price','v19_stock','v19_image','v20_value1','v20_value2','v20_price','v20_stock','v20_image','v21_value1','v21_value2','v21_price','v21_stock','v21_image','v22_value1','v22_value2','v22_price','v22_stock','v22_image','v23_value1','v23_value2','v23_price','v23_stock','v23_image','v24_value1','v24_value2','v24_price','v24_stock','v24_image','v25_value1','v25_value2','v25_price','v25_stock','v25_image','v26_value1','v26_value2','v26_price','v26_stock','v26_image','v27_value1','v27_value2','v27_price','v27_stock','v27_image','v28_value1','v28_value2','v28_price','v28_stock','v28_image','v29_value1','v29_value2','v29_price','v29_stock','v29_image','v30_value1','v30_value2','v30_price','v30_stock','v30_image','v31_value1','v31_value2','v31_price','v31_stock','v31_image','v32_value1','v32_value2','v32_price','v32_stock','v32_image','v33_value1','v33_value2','v33_price','v33_stock','v33_image','v34_value1','v34_value2','v34_price','v34_stock','v34_image','v35_value1','v35_value2','v35_price','v35_stock','v35_image','v36_value1','v36_value2','v36_price','v36_stock','v36_image','v37_value1','v37_value2','v37_price','v37_stock','v37_image','v38_value1','v38_value2','v38_price','v38_stock','v38_image','v39_value1','v39_value2','v39_price','v39_stock','v39_image','v40_value1','v40_value2','v40_price','v40_stock','v40_image','v41_value1','v41_value2','v41_price','v41_stock','v41_image','v42_value1','v42_value2','v42_price','v42_stock','v42_image','v43_value1','v43_value2','v43_price','v43_stock','v43_image','v44_value1','v44_value2','v44_price','v44_stock','v44_image','v45_value1','v45_value2','v45_price','v45_stock','v45_image','v46_value1','v46_value2','v46_price','v46_stock','v46_image','v47_value1','v47_value2','v47_price','v47_stock','v47_image','v48_value1','v48_value2','v48_price','v48_stock','v48_image','v49_value1','v49_value2','v49_price','v49_stock','v49_image','v50_value1','v50_value2','v50_price','v50_stock','v50_image','v51_value1','v51_value2','v51_price','v51_stock','v51_image','v52_value1','v52_value2','v52_price','v52_stock','v52_image','v53_value1','v53_value2','v53_price','v53_stock','v53_image','v54_value1','v54_value2','v54_price','v54_stock','v54_image','v55_value1','v55_value2','v55_price','v55_stock','v55_image','v56_value1','v56_value2','v56_price','v56_stock','v56_image','v57_value1','v57_value2','v57_price','v57_stock','v57_image','v58_value1','v58_value2','v58_price','v58_stock','v58_image','v59_value1','v59_value2','v59_price','v59_stock','v59_image','v60_value1','v60_value2','v60_price','v60_stock','v60_image','v61_value1','v61_value2','v61_price','v61_stock','v61_image','v62_value1','v62_value2','v62_price','v62_stock','v62_image','v63_value1','v63_value2','v63_price','v63_stock','v63_image','v64_value1','v64_value2','v64_price','v64_stock','v64_image','v65_value1','v65_value2','v65_price','v65_stock','v65_image','v66_value1','v66_value2','v66_price','v66_stock','v66_image','v67_value1','v67_value2','v67_price','v67_stock','v67_image','v68_value1','v68_value2','v68_price','v68_stock','v68_image','v69_value1','v69_value2','v69_price','v69_stock','v69_image','v70_value1','v70_value2','v70_price','v70_stock','v70_image','v71_value1','v71_value2','v71_price','v71_stock','v71_image','v72_value1','v72_value2','v72_price','v72_stock','v72_image','v73_value1','v73_value2','v73_price','v73_stock','v73_image','v74_value1','v74_value2','v74_price','v74_stock','v74_image','v75_value1','v75_value2','v75_price','v75_stock','v75_image','v76_value1','v76_value2','v76_price','v76_stock','v76_image','v77_value1','v77_value2','v77_price','v77_stock','v77_image','v78_value1','v78_value2','v78_price','v78_stock','v78_image','v79_value1','v79_value2','v79_price','v79_stock','v79_image','v80_value1','v80_value2','v80_price','v80_stock','v80_image','v81_value1','v81_value2','v81_price','v81_stock','v81_image','v82_value1','v82_value2','v82_price','v82_stock','v82_image','v83_value1','v83_value2','v83_price','v83_stock','v83_image','v84_value1','v84_value2','v84_price','v84_stock','v84_image','v85_value1','v85_value2','v85_price','v85_stock','v85_image','v86_value1','v86_value2','v86_price','v86_stock','v86_image','v87_value1','v87_value2','v87_price','v87_stock','v87_image','v88_value1','v88_value2','v88_price','v88_stock','v88_image','v89_value1','v89_value2','v89_price','v89_stock','v89_image','v90_value1','v90_value2','v90_price','v90_stock','v90_image','v91_value1','v91_value2','v91_price','v91_stock','v91_image','v92_value1','v92_value2','v92_price','v92_stock','v92_image','v93_value1','v93_value2','v93_price','v93_stock','v93_image','v94_value1','v94_value2','v94_price','v94_stock','v94_image','v95_value1','v95_value2','v95_price','v95_stock','v95_image','v96_value1','v96_value2','v96_price','v96_stock','v96_image','v97_value1','v97_value2','v97_price','v97_stock','v97_image','v98_value1','v98_value2','v98_price','v98_stock','v98_image','v99_value1','v99_value2','v99_price','v99_stock','v99_image','v100_value1','v100_value2','v100_price','v100_stock','v100_image']
+        writer = csv.DictWriter(csv_file, fieldnames=fieldnames)
+
+        if not header_exists:
+            writer.writeheader()
+
+        writer.writerows(data)
+    
+def get_convert_items_from_db_to_qlobot(result_path = './qlobot_collection'):
+    print('connect to mongodb...')
+    cursor = get_cursor()
+    try:
+        name_space = str(input('masukkan namespace (default: semua produk shopee): ')).strip()
+        print('get items...')
+        if not name_space:
+            raise ValueError('namespace')
+        
+        data: list[dict] = [c for c in cursor if c and 'marketplace' in c and c['marketplace'] == 'shopee' and c['namespace'] == name_space]
+    except:
+        data: list[dict] = [c for c in cursor if c and 'marketplace' in c and c['marketplace'] == 'shopee']
+        
+    try:
+        max_product_per_csv = int(input(f'max product per csv (default: semua produk shopee [{len(data)}]): '))
+        if not max_product_per_csv:
+            raise ValueError('max_product_per_csv')
+    except:
+        max_product_per_csv = None
+    
+    products, variants = filter_collection_from_pdc(data)
+    result_m = merge_product_variant(products, variants)
+    print('filtering duplicate product...')
+    result = filter_duplicates_list_dict(result_m)
+    
+    if isinstance(max_product_per_csv, int) and max_product_per_csv > 0:
+        for i in range(0, len(result), max_product_per_csv):
+            pecahan = result[i:i + max_product_per_csv]
+            path_csv_file = f'{result_path}/products-{random.randint(10000, 99999)}.csv'
+            write_csv_file_qlobot(path_csv_file, pecahan)
+            print(path_csv_file)
+    else:
+        path_csv_file = f'{result_path}/products-{random.randint(10000, 99999)}.csv'
+        write_csv_file_qlobot(path_csv_file, result)
+        print(path_csv_file)
+    
+
 # ================================ COLLECTION MANAGER ================================
 
 class CollectionManager:
@@ -330,7 +549,7 @@ class CollectionManager:
         self.all_name_space = self.get_all_name_space()
         while True:
             try:
-                items = ['get all count collection', 'export collection', 'import collection from file', 'delete collection by namespace', 'exit']
+                items = ['get all count collection', 'export collection', 'import collection from file', 'delete collection by namespace', 'export to qlobot', 'exit']
                 for no, select in enumerate(items, start=1):
                     print(f'{no}. {select.capitalize()}')
                 
@@ -384,6 +603,9 @@ class CollectionManager:
                     print(f'deleted: {count_deleted} product')
                 
                 elif selected_user == 5:
+                    get_convert_items_from_db_to_qlobot()
+                
+                elif selected_user == 6:
                     break
                 
                 print('\n')
@@ -476,7 +698,7 @@ def generate_category():
                 catid: int = child['catid']
                 parent_catid: int = child['parent_catid']
                 to_url_name = child_name.strip().replace(' ', '-') + '-cat'
-                url = f'https://shopee.co.id/{to_url_name}.{parent_catid}.{catid}'
+                url = f'https://shopee.co.id/{to_url_name}.{parent_catid}.{catid}'.replace(' ', '').replace('\t', '').strip()
                 data_cat.append({
                     'type': 'category',
                     'parent_name': name,
@@ -494,7 +716,7 @@ def generate_category():
                             'type': 'facet',
                             'parent_name': child_name,
                             'name': facet_name,
-                            'link': f'{url}?facet={facet_id}',
+                            'link': f'{url}?facet={facet_id}'.replace(' ', '').replace('\t', '').strip(),
                             'status': ''
                         })
                 
@@ -534,6 +756,9 @@ def append_data_product(data: list[dict], path: str='./result.json'):
 def create_not_exist_file():
     is_exist = True
     if not os.path.exists(path:='./data'):
+        os.mkdir(path)
+        
+    if not os.path.exists(path:='./qlobot_collection'):
         os.mkdir(path)
         
     if not os.path.exists(path:='./data/config.json'):
