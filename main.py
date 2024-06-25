@@ -1249,8 +1249,9 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                     await loop_click_product(page, list_link_product, current_url)
                     
                 except Exception as e:
-                    traceback.print_exc()
                     last_data['error'] = str(e)
+                    if 'resolve_captcha' in str(e):
+                        raise ValueError(str(e))
                 
             # cookies = await context.cookies()
             # save_cookie(username, cookies)
