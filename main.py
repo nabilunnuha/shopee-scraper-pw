@@ -849,6 +849,14 @@ def get_cookies(username: str, dir_name: str='v2_shopee_session') -> list[dict] 
         list_cookie_modifed = [{k[0].lower() + k[1:]: v for k, v in cookie.items() if k.lower() != 'expires'} for cookie in list_cookie]
         
         for c_dict in list_cookie_modifed:
+            if 'domain' in c_dict:
+                c_dict['url'] = 'https://seller.shopee.co.id/' if c_dict['domain'] == '.shopee.co.id' else 'https://shopee.co.id/'
+            else:
+                c_dict['domain'] = '.shopee.co.id'
+                
+            if 'path' not in c_dict:
+                c_dict['path'] = '/'
+                
             c_dict['sameSite'] = 'Lax'
         
         return list_cookie_modifed
