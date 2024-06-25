@@ -1203,6 +1203,7 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
             await loop_starting(page, context, username, password) 
             
             empty_result = page.locator('div.shopee-search-empty-result-section')
+            empty_result_2 = page.locator('div.shopee-search-empty-result-section__hint')
             is_error_url = False 
             resume_page = get_value_params(url, 'page')
             
@@ -1210,7 +1211,7 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                 list_link_product = []
                 
                 if is_error_url:
-                    break
+                    raise ValueError('is_error_url')
                 
                 try:
                     captcha = await resolve_captcha(page, sleep=0.5)
@@ -1240,7 +1241,16 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                             raise ValueError('error: tidak ada produk untuk di scrape!')
                         
                         try:
-                            await empty_result.check(timeout=1000)
+                            await empty_result.check(timeout=700)
+                            print('error url invalid')
+                            is_error_url = True
+                            break
+                        
+                        except:
+                            pass
+                        
+                        try:
+                            await empty_result_2.check(timeout=700)
                             print('error url invalid')
                             is_error_url = True
                             break
@@ -1320,7 +1330,11 @@ def main_scrape():
                 
                 if 'captcha' in error:
                     print('continue', error)
-                    continue
+                    
+                
+                if 'error_url' in error:
+                    print('break', error)
+                    break
                 
                 print(len_data_product)
                 
