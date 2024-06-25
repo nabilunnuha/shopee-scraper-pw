@@ -1003,10 +1003,14 @@ async def loop_click_product(page: Page, list_link_product: list[str], current_u
             captcha = await resolve_captcha(page, sleep=1)
             if captcha:
                 raise ValueError(captcha)
+            
             await page.go_back()
             
         except Exception as e:
             # traceback.print_exc()
+            if 'resolve_captcha' in str(e):
+                raise ValueError(str(e))
+            
             print(f'error click product: {e}')
 
 async def resolve_captcha(page: Page, sleep: int | float = 2):
