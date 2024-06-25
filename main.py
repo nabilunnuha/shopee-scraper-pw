@@ -1315,6 +1315,9 @@ def main_scrape():
                 
                 print(len_data_product)
                 
+                if error:
+                    print(error)
+                    
                 if last_page and int(last_page) - 1 >= filter_data.max_page_scrape:
                     print('break', last_page)
                     break
