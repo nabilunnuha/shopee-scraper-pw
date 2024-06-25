@@ -238,6 +238,7 @@ def convert_to_pdc_from_json():
             
 
 # ================================ CONVERT COLLECTION TO QLOBOT ================================
+
 def fix_url(url: str) -> str:
     if url and 'https://cf.shopee.co.id' not in url:
         url = f'https://cf.shopee.co.id/file/{url}'
@@ -778,7 +779,7 @@ def create_not_exist_file():
             
     return is_exist
 
-def phare_url_params(url: str, params: dict[str, str]):
+def phare_url_params(url: str, params: dict[str, Any] = {}):
     parsed_url = urlparse(url)
     query_params = parse_qs(parsed_url.query)
 
@@ -796,6 +797,15 @@ def phare_url_params(url: str, params: dict[str, str]):
     )
 
     return urlunparse(new_url_parts)
+
+def get_value_params(url: str, key: str):
+    parsed_url = urlparse(url)
+    query_params = parse_qs(parsed_url.query, keep_blank_values=True)
+    if key in query_params:
+        max_price = query_params[key][0]
+        return max_price
+    
+    return None
 
 def corvert_cookie(driver_cookies: list[dict[str, Any]], user_agent: str='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'):
     def cookies_capitalize_first(dictionary: dict[str, Any]):
@@ -907,24 +917,25 @@ def remove_complete_url(url_complete: str):
         
     with open('./list_url_or_keyword.txt', 'w') as f:
         f.write('\n'.join(data_cat))
-    
+
 
 # ================================ SCRAPE ================================
 
-async def filter_url_to_scrape(page: Page, url: str, page_int: int):
+async def filter_url_to_scrape(page: Page, url: str, page_int: int, filter_data: FilterDataModel):
     try:
         await page.wait_for_load_state('load', timeout=10000)
     except:
         pass
     
     if 'https://shopee.co.id/' in url:
-        if page_int > 0:
-            url = phare_url_params(url, params={'page': page_int})
-            refer_before = page.url
-            # print(f'referer: {refer_before}')
-            await page.goto(url, referer=refer_before)
-        else:
+        'https://shopee.co.id/Alat-&-Aksesoris-Musik-cat.11043572.11043648?facet=102019&maxPrice=150000&minPrice=20000&page=0&ratingFilter=4&sortBy=pop'
+        if page_int == 0:
             await page.goto(url, referer='https://shopee.co.id/')
+            
+        url_pharse = phare_url_params(url, params={'page': page_int, 'minPrice': filter_data.price_min, 'maxPrice': filter_data.price_max, 'ratingFilter': int(filter_data.min_rating), 'sortBy': 'pop'})
+        refer_before = page.url
+        # print(f'referer: {refer_before}')
+        await page.goto(url_pharse, referer=refer_before)
         
     else:
         try:
@@ -1114,124 +1125,139 @@ async def loop_starting(page: Page, context: BrowserContext, username: str, pass
             raise ValueError(captcha)
     
 async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, username: str, password: str):
-    data_product = []
+    last_data = {
+        'data_product': [],
+        'last_url': url,
+        'username': username,
+        'error': None
+    }
+    
     list_link_product = []
     is_nol_to_scrape = False
     is_running_scrape = False
-    
-    async def capture_request(request: Request):
-        nonlocal is_nol_to_scrape, data_product, list_link_product, is_running_scrape
-        if 'api/v4/pdp/get_pc' in request.url:
-            response = await request.response()
-            res_json: dict = await response.json()
-            data = res_json.get('data', None)
-            if data:
-                converted_data = convert_product_shopee_to_pdc(res_json, namespace=filter_data.name_space)
-                status_product_db = insert_one_item_to_db(cursor, converted_data)
-                if status_product_db:
-                    data_product.append(data)
-                    title: str = data['item']['title']
-                    print(f'scraped: {title[:70]}')
-            else:
-                print(f'error scrape | response: {res_json}')
+    try:
+        async def capture_request(request: Request):
+            nonlocal is_nol_to_scrape, list_link_product, is_running_scrape, last_data
+            if 'api/v4/pdp/get_pc' in request.url:
+                response = await request.response()
+                res_json: dict = await response.json()
+                data = res_json.get('data', None)
+                if data:
+                    converted_data = convert_product_shopee_to_pdc(res_json, namespace=filter_data.name_space)
+                    status_product_db = insert_one_item_to_db(cursor, converted_data)
+                    if status_product_db:
+                        last_data['data_product'].append(data)
+                        title: str = data['item']['title']
+                        print(f'scraped: {title[:70]}')
+                else:
+                    print(f'error scrape | response: {res_json}')
+                    
                 
+            if 'api/v4/search/search_items' in request.url:
+                response = await request.response()
+                res_json = await response.json()
+                if 'scenario' in request.url:
+                    if not is_running_scrape:
+                        name_to_scrape = get_name_from_list_product(res_json, filter_data)
+                        if len(name_to_scrape) == 0:
+                            is_nol_to_scrape = True
+                        
+                        list_link_product.extend(name_to_scrape)
+                        
+                else:
+                    print(f'error request url: {request.url}')
+        
+        async with async_playwright() as p:
+            browser: Browser = await p.firefox.launch(headless=False)
+            context: BrowserContext = await browser.new_context()
             
-        if 'api/v4/search/search_items' in request.url:
-            response = await request.response()
-            res_json = await response.json()
-            if 'scenario' in request.url:
-                if not is_running_scrape:
-                    name_to_scrape = get_name_from_list_product(res_json, filter_data)
-                    if len(name_to_scrape) == 0:
-                        is_nol_to_scrape = True
-                    
-                    list_link_product.extend(name_to_scrape)
-                    
+            is_cookie: list[dict] | None = get_cookies(username)
+            if is_cookie:
+                print(f'add_cookies: {username}')
+                await context.add_cookies(is_cookie)
+            
             else:
-                print(f'error request url: {request.url}')
-    
-    async with async_playwright() as p:
-        browser: Browser = await p.firefox.launch(headless=False)
-        context: BrowserContext = await browser.new_context()
-        
-        is_cookie: list[dict] | None = get_cookies(username)
-        if is_cookie:
-            print(f'add_cookies: {username}')
-            await context.add_cookies(is_cookie)
-        
-        else:
-            raise FileNotFoundError(f'cookie not found {username}')
-            
-        page = await context.new_page()
-        
-        try:
-            page.on('request', capture_request)
-        except Exception as e:
-            print(e)
-
-        await page.goto('https://shopee.co.id/buyer/login?next=https%3A%2F%2Fshopee.co.id%2F', referer='https://www.google.com/search?q=shopee')
-        await loop_starting(page, context, username, password) 
-        
-        empty_result = page.locator('div.shopee-search-empty-result-section')
-        is_error_url = False 
-        
-        for page_int in range(filter_data.max_page_scrape):
-            list_link_product = []
-            
-            if is_error_url:
-                break
+                raise FileNotFoundError(f'cookie not found {username}')
+                
+            page = await context.new_page()
             
             try:
-                captcha = await resolve_captcha(page, sleep=0.5)
-                if captcha:
-                    raise ValueError(captcha)
-                print('get url to scrape')
-                is_running_scrape = False
-                current_url = await filter_url_to_scrape(page, url, page_int)
-                captcha = await resolve_captcha(page, sleep=0.5)
-                if captcha:
-                    raise ValueError(captcha)
+                page.on('request', capture_request)
+            except Exception as e:
+                print(e)
+
+            await page.goto('https://shopee.co.id/buyer/login?next=https%3A%2F%2Fshopee.co.id%2F', referer='https://www.google.com/search?q=shopee')
+            await loop_starting(page, context, username, password) 
+            
+            empty_result = page.locator('div.shopee-search-empty-result-section')
+            is_error_url = False 
+            resume_page = get_value_params(url, 'page')
+            
+            for page_int in range(int(resume_page) if resume_page is not None else 0, filter_data.max_page_scrape):
+                list_link_product = []
                 
-                print(f'get product to scrape: page {page_int}')
-                start_while = time.time()
-                while (time.time() - start_while) < 300:
-                    if len(list_link_product) > 0:
-                        print(f'product to scrape: {len(list_link_product)} product')
-                        is_running_scrape = True
-                        break
-                    
-                    if page.url == 'https://shopee.co.id/' or page.url == 'https://shopee.co.id':
-                        current_url = await filter_url_to_scrape(page, url, page_int)
-                    
-                    if is_nol_to_scrape:
-                        raise ValueError('error: tidak ada produk untuk di scrape!')
-                    
-                    try:
-                        await empty_result.check(timeout=1000)
-                        print('error url invalid')
-                        is_error_url = True
-                        break
-                    
-                    except:
-                        pass
-                    
-                    if 'verify/traffic/error' in page.url:
-                        raise ValueError('error: verify/traffic/error')
-                    
+                if is_error_url:
+                    break
+                
+                try:
                     captcha = await resolve_captcha(page, sleep=0.5)
                     if captcha:
                         raise ValueError(captcha)
                     
-                await loop_click_product(page, list_link_product, current_url)
+                    print('get url to scrape')
+                    is_running_scrape = False
+                    current_url = await filter_url_to_scrape(page, url, page_int, filter_data)
+                    last_data['last_url'] = current_url
+                    captcha = await resolve_captcha(page, sleep=0.5)
+                    if captcha:
+                        raise ValueError(captcha)
+                    
+                    print(f'get product to scrape: page {page_int}')
+                    start_while = time.time()
+                    while (time.time() - start_while) < 300:
+                        if len(list_link_product) > 0:
+                            print(f'product to scrape: {len(list_link_product)} product')
+                            is_running_scrape = True
+                            break
+                        
+                        if page.url == 'https://shopee.co.id/' or page.url == 'https://shopee.co.id':
+                            current_url = await filter_url_to_scrape(page, url, page_int, filter_data)
+                        
+                        if is_nol_to_scrape:
+                            raise ValueError('error: tidak ada produk untuk di scrape!')
+                        
+                        try:
+                            await empty_result.check(timeout=1000)
+                            print('error url invalid')
+                            is_error_url = True
+                            break
+                        
+                        except:
+                            pass
+                        
+                        if 'verify/traffic/error' in page.url:
+                            raise ValueError('error: verify/traffic/error')
+                        
+                        captcha = await resolve_captcha(page, sleep=0.5)
+                        if captcha:
+                            raise ValueError(captcha)
+                        
+                    await loop_click_product(page, list_link_product, current_url)
+                    
+                except Exception as e:
+                    traceback.print_exc()
+                    last_data['error'] = str(e)
                 
-            except:
-                traceback.print_exc()
-            
-        cookies = await context.cookies()
-        save_cookie(username, cookies)
-        await browser.close()
+            # cookies = await context.cookies()
+            # save_cookie(username, cookies)
+            await browser.close()
     
-    return data_product
+    except Exception as e:
+        # traceback.print_exc()
+        last_data['error'] = str(e)
+        
+    finally:
+        return last_data
     
 def main_scrape():
     try:
@@ -1266,19 +1292,35 @@ def main_scrape():
             data_akun.append({'username': username, 'password': password})
             
         print(filter_data)
-        for url in list_url:
-            random_pick_akun = random.choice(data_akun)
-            try:
-                result = asyncio.run(scrape(cursor, url, filter_data, random_pick_akun['username'], random_pick_akun['password']))
-            except:
-                traceback.print_exc()
-                continue
-            
+        for index_url, url in enumerate(list_url, start=1):
+            last_url = url
+            while True:
+                print(f'{index_url}. {last_url}')
+                random_pick_akun = random.choice(data_akun)
+                result = asyncio.run(scrape(cursor, last_url, filter_data, random_pick_akun['username'], random_pick_akun['password']))
+                last_url = result['last_url']
+                prev_username = result['username']
+                error = result['error']
+                len_data_product = len(result['data_product'])
+                last_page = get_value_params(last_url, 'page')
+                
+                print(len_data_product)
+                if last_page and int(last_page) - 1 >= filter_data.max_page_scrape:
+                    print('break', last_page)
+                    break
+                
+                if len_data_product == 0:
+                    print('break', len_data_product)
+                    break
+                
+                if 'captcha' in error:
+                    print('continue', error)
+                    continue
+                
             remove_complete_url(url)
-            # append_data_product(result)
-            print(len(result))
         
         print('selesai...')
+        
     except:
         traceback.print_exc()
         
