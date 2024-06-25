@@ -1304,7 +1304,12 @@ def main_scrape():
                 len_data_product = len(result['data_product'])
                 last_page = get_value_params(last_url, 'page')
                 
+                if 'captcha' in error:
+                    print('continue', error)
+                    continue
+                
                 print(len_data_product)
+                
                 if last_page and int(last_page) - 1 >= filter_data.max_page_scrape:
                     print('break', last_page)
                     break
@@ -1312,10 +1317,6 @@ def main_scrape():
                 if len_data_product == 0:
                     print('break', len_data_product)
                     break
-                
-                if 'captcha' in error:
-                    print('continue', error)
-                    continue
                 
             remove_complete_url(url)
         
