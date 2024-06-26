@@ -971,11 +971,31 @@ async def filter_url_to_scrape(page: Page, url: str, page_int: int, filter_data:
     return page.url
         
 async def loop_click_product(page: Page, list_link_product: list[str], current_url: str):
-    # nav_pagination_bottom = page.locator('nav.shopee-page-controller')
+    empty_result = page.locator('div.shopee-search-empty-result-section')
+    empty_result_2 = page.locator('div.shopee-search-empty-result-section__hint')
+    
     for name in list(set(list_link_product)):
         captcha = await resolve_captcha(page, sleep=0.5)
         if captcha:
             raise ValueError(captcha)
+
+        try:
+            await empty_result.scroll_into_view_if_needed(timeout=500)
+            print('error url invalid')
+            raise ValueError('is_error_url')
+        
+        except Exception as e:
+            if str(e) == 'is_error_url':
+                raise ValueError('is_error_url')
+        
+        try:
+            await empty_result_2.scroll_into_view_if_needed(timeout=500)
+            print('error url invalid')
+            raise ValueError('is_error_url')
+        
+        except Exception as e:
+            if str(e) == 'is_error_url':
+                raise ValueError('is_error_url')
         try:
             try:
                 await page.wait_for_load_state('domcontentloaded', timeout=10000)
@@ -1205,14 +1225,11 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
             empty_result = page.locator('div.shopee-search-empty-result-section')
             empty_result_2 = page.locator('div.shopee-search-empty-result-section__hint')
             
-            is_error_url = False 
             resume_page = get_value_params(url, 'page')
             
             for page_int in range(int(resume_page) if resume_page is not None else 0, filter_data.max_page_scrape):
                 list_link_product = []
                 
-                if is_error_url:
-                    raise ValueError('is_error_url')
                 
                 try:
                     captcha = await resolve_captcha(page, sleep=0.5)
@@ -1244,20 +1261,20 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                         try:
                             await empty_result.scroll_into_view_if_needed(timeout=700)
                             print('error url invalid')
-                            is_error_url = True
-                            break
+                            raise ValueError('is_error_url')
                         
-                        except:
-                            pass
+                        except Exception as e:
+                            if str(e) == 'is_error_url':
+                                raise ValueError('is_error_url')
                         
                         try:
                             await empty_result_2.scroll_into_view_if_needed(timeout=700)
                             print('error url invalid')
-                            is_error_url = True
-                            break
+                            raise ValueError('is_error_url')
                         
-                        except:
-                            pass
+                        except Exception as e:
+                            if str(e) == 'is_error_url':
+                                raise ValueError('is_error_url')
                         
                         if 'verify/traffic/error' in page.url:
                             raise ValueError('error: verify/traffic/error')
