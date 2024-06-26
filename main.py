@@ -1329,12 +1329,12 @@ def main_scrape():
                 len_data_product = len(result['data_product'])
                 last_page = get_value_params(last_url, 'page')
                 
-                if 'captcha' in error:
+                if error and 'captcha' in error:
                     print('continue', error)
                     continue
                     
                 
-                if 'error_url' in error:
+                if error and 'error_url' in error:
                     print('break', error)
                     break
                 
