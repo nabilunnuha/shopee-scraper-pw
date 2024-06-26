@@ -1342,12 +1342,12 @@ def main_scrape():
                     print(error)
                     
                 if last_page and int(last_page) - 1 >= filter_data.max_page_scrape:
-                    print('break', last_page)
+                    print('break last_page', last_page)
                     break
                 
-                if len_data_product == 0:
-                    print('break', len_data_product)
-                    break
+                # if len_data_product == 0:
+                #     print('break len_data_product', len_data_product)
+                #     break
                 
             remove_complete_url(url)
         
