@@ -1204,6 +1204,7 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
             
             empty_result = page.locator('div.shopee-search-empty-result-section')
             empty_result_2 = page.locator('div.shopee-search-empty-result-section__hint')
+            
             is_error_url = False 
             resume_page = get_value_params(url, 'page')
             
@@ -1241,7 +1242,7 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                             raise ValueError('error: tidak ada produk untuk di scrape!')
                         
                         try:
-                            await empty_result.check(timeout=700)
+                            await empty_result.scroll_into_view_if_needed(timeout=700)
                             print('error url invalid')
                             is_error_url = True
                             break
@@ -1250,7 +1251,7 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                             pass
                         
                         try:
-                            await empty_result_2.check(timeout=700)
+                            await empty_result_2.scroll_into_view_if_needed(timeout=700)
                             print('error url invalid')
                             is_error_url = True
                             break
