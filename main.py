@@ -1330,6 +1330,7 @@ def main_scrape():
                 
                 if 'captcha' in error:
                     print('continue', error)
+                    continue
                     
                 
                 if 'error_url' in error:
@@ -1345,9 +1346,9 @@ def main_scrape():
                     print('break last_page', last_page)
                     break
                 
-                # if len_data_product == 0:
-                #     print('break len_data_product', len_data_product)
-                #     break
+                if len_data_product == 0:
+                    print('break len_data_product', len_data_product)
+                    break
                 
             remove_complete_url(url)
         
