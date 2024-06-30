@@ -1177,37 +1177,41 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
     list_link_product = []
     is_nol_to_scrape = False
     is_running_scrape = False
+    
     try:
         async def capture_request(request: Request):
             nonlocal is_nol_to_scrape, list_link_product, is_running_scrape, last_data
-            if 'api/v4/pdp/get_pc' in request.url:
-                response = await request.response()
-                res_json: dict = await response.json()
-                data = res_json.get('data', None)
-                if data:
-                    converted_data = convert_product_shopee_to_pdc(res_json, namespace=filter_data.name_space)
-                    status_product_db = insert_one_item_to_db(cursor, converted_data)
-                    if status_product_db:
-                        last_data['data_product'].append(data)
-                        title: str = data['item']['title']
-                        print(f'scraped: {title[:70]}')
-                else:
-                    print(f'error scrape | response: {res_json}')
+            try:
+                if 'api/v4/pdp/get_pc' in request.url:
+                    response = await request.response()
+                    res_json: dict = await response.json()
+                    data = res_json.get('data', None)
+                    if data:
+                        converted_data = convert_product_shopee_to_pdc(res_json, namespace=filter_data.name_space)
+                        status_product_db = insert_one_item_to_db(cursor, converted_data)
+                        if status_product_db:
+                            last_data['data_product'].append(data)
+                            title: str = data['item']['title']
+                            print(f'scraped: {title[:70]}')
+                    else:
+                        print(f'error scrape | response: {res_json}')
+                        
                     
-                
-            if 'api/v4/search/search_items' in request.url:
-                response = await request.response()
-                res_json = await response.json()
-                if 'scenario' in request.url:
-                    if not is_running_scrape:
-                        name_to_scrape = get_name_from_list_product(res_json, filter_data)
-                        if len(name_to_scrape) == 0:
-                            is_nol_to_scrape = True
-                        
-                        list_link_product.extend(name_to_scrape)
-                        
-                else:
-                    print(f'error request url: {request.url}')
+                if 'api/v4/search/search_items' in request.url:
+                    response = await request.response()
+                    res_json = await response.json()
+                    if 'scenario' in request.url:
+                        if not is_running_scrape:
+                            name_to_scrape = get_name_from_list_product(res_json, filter_data)
+                            if len(name_to_scrape) == 0:
+                                is_nol_to_scrape = True
+                            
+                            list_link_product.extend(name_to_scrape)
+                            
+                    else:
+                        print(f'error request url: {request.url}')
+            except Exception as e:
+                print(f'error http request: {str(e)}')
         
         async with async_playwright() as p:
             browser: Browser = await p.firefox.launch(headless=False)
@@ -1299,8 +1303,8 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                     if 'resolve_captcha' in str(e):
                         raise ValueError(str(e))
                 
-            # cookies = await context.cookies()
-            # save_cookie(username, cookies)
+            cookies = await context.cookies()
+            save_cookie(username, cookies)
             await browser.close()
     
     except Exception as e:
