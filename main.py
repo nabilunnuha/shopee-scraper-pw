@@ -1121,6 +1121,7 @@ async def login_account(page: Page, username: str, password: str):
 async def loop_starting(page: Page, context: BrowserContext, username: str, password: str):
     account_container = page.locator('div.navbar__link--account__container')
     input_login_username = page.locator('input[type=text].Z7tNyT')
+    alert_login = page.locator('div > div.y9KyC1')
     try:
         print('waiting for load state')
         await page.wait_for_load_state('load', timeout=10000)
@@ -1148,10 +1149,18 @@ async def loop_starting(page: Page, context: BrowserContext, username: str, pass
             pass
         
         try:
+            await alert_login.scroll_into_view_if_needed(timeout=500)
+            raise ValueError('login gagal')
+        except Exception as e:
+            if str(e) == 'login gagal':
+                raise ValueError(str(e))
+            
+        try:
             await input_login_username.scroll_into_view_if_needed(timeout=500)
             await login_account(page, username, password)
         except:
             pass
+        
             
         captcha = await resolve_captcha(page, sleep=0.5)
         if captcha:
@@ -1326,7 +1335,7 @@ def main_scrape():
             list_url = [i.strip() for i in f.readlines() if i]
             
         with open('./akun.txt', 'r') as f:
-            list_akun = [i.strip() for i in f.readlines() if i]
+            list_akun = list(set([i.strip() for i in f.readlines() if i]))
             
         data_akun: list[dict] = []
         for akun in list_akun:
@@ -1334,14 +1343,22 @@ def main_scrape():
             data_akun.append({'username': username, 'password': password})
             
         print(filter_data)
+        account_used = []
         for index_url, url in enumerate(list_url, start=1):
             last_url = url
             while True:
                 print(f'{index_url}. {last_url}')
-                random_pick_akun = random.choice(data_akun)
+                if len(account_used) >= int(len(data_akun) / 2):
+                    account_used = []
+                    
+                while True:
+                    random_pick_akun = random.choice(data_akun)
+                    if random_pick_akun['username'] not in account_used:
+                        account_used.append(random_pick_akun['username'])
+                        break
+                    
                 result = asyncio.run(scrape(cursor, last_url, filter_data, random_pick_akun['username'], random_pick_akun['password']))
                 last_url = result['last_url']
-                prev_username = result['username']
                 error = result['error']
                 len_data_product = len(result['data_product'])
                 last_page = get_value_params(last_url, 'page')
@@ -1349,7 +1366,10 @@ def main_scrape():
                 if error and 'captcha' in error:
                     print('continue', error)
                     continue
-                    
+                
+                if error and 'login gagal' in error:
+                    print('continue', error)
+                    continue
                 
                 if error and 'error_url' in error:
                     print('break', error)
