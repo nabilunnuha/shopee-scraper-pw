@@ -53,6 +53,7 @@ try:
     from pymongo.cursor import Cursor
     from pymongo.errors import DuplicateKeyError
     from tqdm import tqdm
+    # from bs4 import BeautifulSoup
     
 except ImportError as ie:
     print(ie)
@@ -742,6 +743,19 @@ class FilterDataModel(BaseModel):
 
 # ================================ UTILS ================================
 
+def get_name_by_href(data: list[str]) -> list[str]:
+    names = []
+    for dd in data:
+        dd_splited = dd.split('-i.')
+        if len(dd_splited) != 2:
+            continue
+        
+        name_with_dash = dd_splited[0].strip('-')[1:]
+        name = name_with_dash.replace('-', ' ')
+        names.append(name)
+        
+    return names
+
 def append_data_product(data: list[dict], path: str='./result.json'):
     data_add = []
     if os.path.exists(path):
@@ -1002,7 +1016,7 @@ async def loop_click_product(page: Page, list_link_product: list[str], current_u
             except:
                 pass
             
-            locator_product = page.locator('a > div > div', has_text=name[:30].strip())
+            locator_product = page.locator('a', has_text=name[:25].strip())
             
             try:
                 await locator_product.scroll_into_view_if_needed(timeout=2000)
@@ -1313,6 +1327,180 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
         
     finally:
         return last_data
+    
+# async def scrape_2(cursor: Cursor, url: str, filter_data: FilterDataModel, username: str, password: str):
+#     last_data = {
+#         'data_product': [],
+#         'last_url': url,
+#         'username': username,
+#         'error': None
+#     }
+    
+#     list_link_product = []
+#     is_nol_to_scrape = False
+#     is_running_scrape = False
+    
+#     try:
+#         async def capture_request(request: Request):
+#             nonlocal is_nol_to_scrape, list_link_product, is_running_scrape, last_data
+#             try:
+#                 if 'api/v4/pdp/get_pc' in request.url:
+#                     response = await request.response()
+#                     res_json: dict = await response.json()
+#                     data = res_json.get('data', None)
+#                     if data:
+#                         converted_data = convert_product_shopee_to_pdc(res_json, namespace=filter_data.name_space)
+#                         status_product_db = insert_one_item_to_db(cursor, converted_data)
+#                         if status_product_db:
+#                             last_data['data_product'].append(data)
+#                             title: str = data['item']['title']
+#                             print(f'scraped: {title[:70]}')
+#                     else:
+#                         print(f'error scrape | response: {res_json}')
+                        
+                    
+#                 if 'api/v4/search/search_items' in request.url:
+#                     response = await request.response()
+#                     res_json = await response.json()
+#                     if 'scenario' in request.url:
+#                         if not is_running_scrape:
+#                             name_to_scrape = get_name_from_list_product(res_json, filter_data)
+#                             if len(name_to_scrape) == 0:
+#                                 is_nol_to_scrape = True
+                            
+#                             list_link_product.extend(name_to_scrape)
+                            
+#                     else:
+#                         print(f'error request url: {request.url}')
+#             except Exception as e:
+#                 print(f'error http request: {str(e)}')
+        
+#         async with async_playwright() as p:
+#             browser: Browser = await p.firefox.launch(headless=False)
+#             context: BrowserContext = await browser.new_context()
+            
+#             is_cookie: list[dict] | None = get_cookies(username)
+#             if is_cookie:
+#                 print(f'add_cookies: {username}')
+#                 await context.add_cookies(is_cookie)
+            
+#             else:
+#                 raise FileNotFoundError(f'cookie not found {username}')
+                
+#             page = await context.new_page()
+            
+#             try:
+#                 page.on('request', capture_request)
+#             except Exception as e:
+#                 print(e)
+
+#             await page.goto('https://shopee.co.id/buyer/login?next=https%3A%2F%2Fshopee.co.id%2F', referer='https://www.google.com/search?q=shopee')
+#             await loop_starting(page, context, username, password) 
+            
+#             empty_result = page.locator('div.shopee-search-empty-result-section')
+#             empty_result_2 = page.locator('div.shopee-search-empty-result-section__hint')
+            
+#             resume_page = get_value_params(url, 'page')
+            
+#             for page_int in range(int(resume_page) if resume_page is not None else 0, filter_data.max_page_scrape):
+#                 list_link_product = []
+                
+                
+#                 try:
+#                     captcha = await resolve_captcha(page, sleep=0.5)
+#                     if captcha:
+#                         raise ValueError(captcha)
+                    
+#                     print('get url to scrape')
+#                     is_running_scrape = False
+#                     current_url = await filter_url_to_scrape(page, url, page_int, filter_data)
+#                     last_data['last_url'] = current_url
+#                     captcha = await resolve_captcha(page, sleep=0.5)
+#                     if captcha:
+#                         raise ValueError(captcha)
+                    
+#                     print(f'get product to scrape: page {page_int}')
+                    
+#                     prev = 0
+#                     for iter in range(0, 5000, 500):
+#                         await page.evaluate(f'() => window.scrollTo({prev}, {iter})')
+#                         prev = iter
+#                         try:
+#                             await asyncio.sleep(0.5)
+#                             await page.wait_for_load_state('domcontentloaded', timeout=10000)
+#                         except:
+#                             pass
+                    
+#                     html_source = await page.content()
+#                     soup = BeautifulSoup(html_source, "html.parser")
+                    
+#                     links = []
+#                     for link in soup.find_all('a'):
+#                         href: str = link.get('href')
+#                         if href and 'sp_atk=' in href:
+#                             links.append(href)
+                    
+#                     links = get_name_by_href(links)
+#                     print(links)
+#                     print(len(links))
+                    
+#                     start_while = time.time()
+#                     while (time.time() - start_while) < 300:
+#                         if len(links) > 0:
+#                             print(f'product to scrape: {len(links)} product')
+#                             is_running_scrape = True
+#                             break
+                        
+#                         if page.url == 'https://shopee.co.id/' or page.url == 'https://shopee.co.id':
+#                             current_url = await filter_url_to_scrape(page, url, page_int, filter_data)
+                        
+#                         if is_nol_to_scrape:
+#                             raise ValueError('error: tidak ada produk untuk di scrape!')
+                        
+#                         try:
+#                             await empty_result.scroll_into_view_if_needed(timeout=700)
+#                             print('error url invalid')
+#                             raise ValueError('is_error_url')
+                        
+#                         except Exception as e:
+#                             if str(e) == 'is_error_url':
+#                                 raise ValueError('is_error_url')
+                        
+#                         try:
+#                             await empty_result_2.scroll_into_view_if_needed(timeout=700)
+#                             print('error url invalid')
+#                             raise ValueError('is_error_url')
+                        
+#                         except Exception as e:
+#                             if str(e) == 'is_error_url':
+#                                 raise ValueError('is_error_url')
+                        
+#                         if 'verify/traffic/error' in page.url:
+#                             raise ValueError('error: verify/traffic/error')
+                        
+#                         captcha = await resolve_captcha(page, sleep=0.5)
+#                         if captcha:
+#                             raise ValueError(captcha)
+                        
+#                     await loop_click_product(page, links, current_url)
+                    
+#                 except Exception as e:
+#                     print(e)
+#                     traceback.print_exc()
+#                     last_data['error'] = str(e)
+#                     if 'resolve_captcha' in str(e):
+#                         raise ValueError(str(e))
+                
+#             cookies = await context.cookies()
+#             save_cookie(username, cookies)
+#             await browser.close()
+    
+#     except Exception as e:
+#         # traceback.print_exc()
+#         last_data['error'] = str(e)
+        
+#     finally:
+#         return last_data
     
 def main_scrape():
     try:
