@@ -1095,7 +1095,7 @@ async def resolve_captcha(page: Page, sleep: int | float = 2):
         
         try:
             await network_error.scroll_into_view_if_needed(timeout=300)
-            await page.goto('https://shopee.co.id/')
+            await page.goto('https://shopee.co.id/', referer=page.url)
             await asyncio.sleep(2)
         except:
             pass
