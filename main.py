@@ -1376,22 +1376,23 @@ def main_scrape():
             
         filter_data = FilterDataModel(**config)
         
-        with open('./data/config.json', 'w') as f:
+        with open(path_config:='./data/config.json', 'w') as f:
             json.dump(filter_data.model_dump(), f, indent=4)
             
-        with open('./list_url_or_keyword.txt', 'r') as f:
+        with open(path_list_url_or_keyword:='./list_url_or_keyword.txt', 'r') as f:
             list_url = [i.strip() for i in f.readlines() if i]
             
-        with open('./akun.txt', 'r') as f:
+        with open(path_akun:='./akun.txt', 'r') as f:
             list_akun = list(set([i.strip() for i in f.readlines() if i]))
             
-        data_akun: list[dict] = []
+        data_akun: list[dict[str, str]] = []
         for akun in list_akun:
             username, password, *_ = akun.split('|')
             data_akun.append({'username': username, 'password': password})
             
         print(filter_data)
         account_used = []
+        
         for index_url, url in enumerate(list_url, start=1):
             last_url = url
             while True:
@@ -1400,7 +1401,7 @@ def main_scrape():
                     account_used = []
                     
                 while True:
-                    random_pick_akun = random.choice(data_akun)
+                    random_pick_akun: dict[str, str] = random.choice(data_akun)
                     if random_pick_akun['username'] not in account_used:
                         account_used.append(random_pick_akun['username'])
                         break
@@ -1417,6 +1418,14 @@ def main_scrape():
                 
                 if error:
                     log_account_error_captcha(random_pick_akun['username'], error)
+                    if 'captcha' in error or 'login gagal' in error:
+                        data_akun = [dt_akun for dt_akun in data_akun if dt_akun['username'].strip() != random_pick_akun['username'].strip()]
+                        with open(path_akun, 'r') as f:
+                            list_akun = list(set([i.strip() for i in f.readlines() if i.strip()]))
+                            list_akun = [akun for akun in list_akun if not akun.startswith(random_pick_akun['username'].strip())]
+                            
+                        with open(path_akun, 'w') as f:
+                            f.write('\n'.join(list_akun))
                     
                 if error and 'captcha' in error:
                     print('continue', error)
