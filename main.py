@@ -1001,12 +1001,12 @@ async def filter_url_to_scrape(page: Page, url: str, page_int: int, filter_data:
     
     return page.url
         
-async def loop_click_product(page: Page, list_link_product: list[str], current_url: str):
+async def loop_click_product(page: Page, browser: Browser, list_link_product: list[str], current_url: str):
     empty_result = page.locator('div.shopee-search-empty-result-section')
     empty_result_2 = page.locator('div.shopee-search-empty-result-section__hint')
     
     for name in list(set(list_link_product)):
-        captcha = await resolve_captcha(page, sleep=0.5)
+        captcha = await resolve_captcha(page, browser, sleep=0.5)
         if captcha:
             raise ValueError(captcha)
 
@@ -1060,7 +1060,7 @@ async def loop_click_product(page: Page, list_link_product: list[str], current_u
                 await locator_product.scroll_into_view_if_needed(timeout=5000)
                 await locator_product.click()
                 
-            captcha = await resolve_captcha(page, sleep=0.5)
+            captcha = await resolve_captcha(page, browser, sleep=0.5)
             if captcha:
                 raise ValueError(captcha)
             
@@ -1073,7 +1073,7 @@ async def loop_click_product(page: Page, list_link_product: list[str], current_u
             
             print(f'error click product: {e}')
 
-async def resolve_captcha(page: Page, sleep: int | float = 2):
+async def resolve_captcha(page: Page, browser: Browser, sleep: int | float = 2):
     # await asyncio.sleep(sleep)
     laporkan = page.locator('button.cHPMhq', has_text='Laporkan Permasalahan')
     masalah = page.locator('div.uUcrOy', has_text='kami mendeteksi masalah dari koneksi jaringanmu')
@@ -1087,6 +1087,14 @@ async def resolve_captcha(page: Page, sleep: int | float = 2):
             print('tidak ada pergerakan selama 5 menit')
             return 'resolve_captcha traffic error captcha'
             # raise ValueError('resolve_captcha tidak ada pergerakan')
+        
+        is_connected = browser.is_connected()
+        if not is_connected:
+            return 'resolve_captcha browser is not connected' 
+        
+        is_closed = page.is_closed()
+        if is_closed:
+            return 'resolve_captcha page is closed' 
         
         if '/verify/traffic/error' in page.url:
             print('error traffic captcha')
@@ -1159,7 +1167,7 @@ async def login_account(page: Page, username: str, password: str):
     await page.keyboard.press('Enter')
     await asyncio.sleep(2)
 
-async def loop_starting(page: Page, context: BrowserContext, username: str, password: str):
+async def loop_starting(page: Page, browser: Browser, context: BrowserContext, username: str, password: str):
     account_container = page.locator('div.navbar__link--account__container')
     input_login_username = page.locator('input[type=text].Z7tNyT')
     alert_login = page.locator('div > div.y9KyC1')
@@ -1198,9 +1206,27 @@ async def loop_starting(page: Page, context: BrowserContext, username: str, pass
             pass
         
             
-        captcha = await resolve_captcha(page, sleep=0.5)
+        captcha = await resolve_captcha(page, browser, sleep=0.5)
         if captcha:
             return captcha
+    
+async def starter_page(page: Page):
+    await page.goto('https://www.google.com/')
+            
+    textarea = page.locator('textarea#APjFqb')
+    try:
+        await textarea.scroll_into_view_if_needed(timeout=10000)
+        await textarea.click()
+        await page.keyboard.type('shopee')
+        await page.keyboard.press('Enter')
+    except:
+        await page.goto('https://www.google.com/search?q=shopee')
+        
+    shopee_indonesia = page.get_by_text('Shopee Indonesia | Situs Belanja Online')
+    try:
+        await shopee_indonesia.click(timeout=10000)
+    except:
+        await page.goto('https://shopee.co.id/', referer=page.url)
     
 async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, username: str, password: str):
     last_data = {
@@ -1267,15 +1293,10 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                 page.on('request', capture_request)
             except Exception as e:
                 print(e)
-
-            await page.goto('https://www.google.com/search?q=shopee')
-            shopee_indonesia = page.get_by_text('Shopee Indonesia | Situs Belanja Online')
-            try:
-                await shopee_indonesia.click(timeout=5000)
-            except:
-                await page.goto('https://shopee.co.id/', referer=page.url)
+    
+            await starter_page(page)
                 
-            starting = await loop_starting(page, context, username, password) 
+            starting = await loop_starting(page, browser, context, username, password) 
             if starting:
                 raise ValueError(starting)
             
@@ -1287,9 +1308,8 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
             for page_int in range(int(resume_page) if resume_page is not None else 0, filter_data.max_page_scrape):
                 list_link_product = []
                 
-                
                 try:
-                    captcha = await resolve_captcha(page, sleep=0.5)
+                    captcha = await resolve_captcha(page, browser, sleep=0.5)
                     if captcha:
                         raise ValueError(captcha)
                     
@@ -1297,7 +1317,7 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                     is_running_scrape = False
                     current_url = await filter_url_to_scrape(page, url, page_int, filter_data)
                     last_data['last_url'] = current_url
-                    captcha = await resolve_captcha(page, sleep=0.5)
+                    captcha = await resolve_captcha(page, browser, sleep=0.5)
                     if captcha:
                         raise ValueError(captcha)
                     
@@ -1336,11 +1356,11 @@ async def scrape(cursor: Cursor, url: str, filter_data: FilterDataModel, usernam
                         if 'verify/traffic/error' in page.url:
                             raise ValueError('error: verify/traffic/error')
                         
-                        captcha = await resolve_captcha(page, sleep=0.5)
+                        captcha = await resolve_captcha(page, browser, sleep=0.5)
                         if captcha:
                             raise ValueError(captcha)
                         
-                    await loop_click_product(page, list_link_product, current_url)
+                    await loop_click_product(page, browser, list_link_product, current_url)
                     
                 except Exception as e:
                     last_data['error'] = str(e)
@@ -1391,26 +1411,23 @@ def main_scrape():
             data_akun.append({'username': username, 'password': password})
             
         print(filter_data)
-        account_used = []
         
         for index_url, url in enumerate(list_url, start=1):
             last_url = url
             while True:
                 print(f'{index_url}. {last_url}')
-                if len(account_used) >= int(len(data_akun) - 1):
-                    account_used = []
-                    
-                while True:
+                if len(data_akun) >= 1:
                     random_pick_akun: dict[str, str] = random.choice(data_akun)
-                    if random_pick_akun['username'] not in account_used:
-                        account_used.append(random_pick_akun['username'])
-                        break
+                else:
+                    raise ValueError('akun telah habis!')
                     
                 result = asyncio.run(scrape(cursor, last_url, filter_data, random_pick_akun['username'], random_pick_akun['password']))
                 last_url = result['last_url']
                 error = result['error']
                 len_data_product = len(result['data_product'])
                 last_page = get_value_params(last_url, 'page')
+                
+                print(f'{error = }')
                 
                 if error and 'error_url' in error:
                     print('break', error)
@@ -1437,10 +1454,6 @@ def main_scrape():
                     
                 if last_page and int(last_page) - 1 >= filter_data.max_page_scrape:
                     print('break last_page', last_page)
-                    break
-                
-                if len_data_product == 0:
-                    print('break len_data_product', len_data_product)
                     break
                 
             remove_complete_url(url)
